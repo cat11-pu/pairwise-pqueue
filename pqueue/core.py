@@ -34,7 +34,7 @@ def _rank(node):
 
 def _before(first, second):
     """first 是否排在 second 前面。"""
-    return first.key <= second.key
+    return (first.key, first.seq) <= (second.key, second.seq)
 
 
 def _join(a, b):
@@ -48,7 +48,7 @@ def _join(a, b):
     a.right = _join(a.right, b)
     if a.right is not None:
         a.right.parent = a
-    if _rank(a.left) > _rank(a.right):
+    if _rank(a.left) < _rank(a.right):
         a.left, a.right = a.right, a.left
     a.rank = _rank(a.right) + 1
     return a
@@ -121,15 +121,15 @@ class LeftistHeap:
         if self.root is None:
             return None
         entry = self.root
-        self.root = _join(entry.left, entry.right)
-        if self.root is None:
-            return entry
-        self.root.parent = None
+        left, right = entry.left, entry.right
         entry.left = None
         entry.right = None
         entry.parent = None
         entry.rank = 1
         self.size -= 1
+        self.root = _join(left, right)
+        if self.root is not None:
+            self.root.parent = None
         return entry
 
     def merge(self, other):
@@ -142,6 +142,8 @@ class LeftistHeap:
             self.root = _join(self.root, other.root)
             self.root.parent = None
             self.size += other.size
+            other.root = None
+            other.size = 0
         return self
 
     def decrease_key(self, entry, new_key):
@@ -158,7 +160,7 @@ class LeftistHeap:
             return
         entry.key = new_key
         parent = entry.parent
-        if parent is None or _before(entry, parent):
+        if parent is None or not _before(entry, parent):
             return
         self._lift(entry, parent)
 
@@ -171,19 +173,26 @@ class LeftistHeap:
             parent.right = stand_in
         if stand_in is not None:
             stand_in.parent = parent
-        self._fix_up(parent)
         entry.left = None
         entry.right = None
         entry.parent = None
         entry.rank = 1
+        self._fix_up(parent)
+        self.root = _join(self.root, entry)
+        self.root.parent = None
 
     def _fix_up(self, node):
         """从 node 出发沿父链把 npl 与左偏性质修好，到 rank 不再变化为止。"""
         while node is not None:
-            rank = _rank(node.right) + 1
-            if rank == node.rank:
+            left_rank = _rank(node.left)
+            right_rank = _rank(node.right)
+            if left_rank < right_rank:
+                node.left, node.right = node.right, node.left
+                left_rank, right_rank = right_rank, left_rank
+            new_rank = right_rank + 1
+            if new_rank == node.rank:
                 return
-            node.rank = rank
+            node.rank = new_rank
             node = node.parent
 
     def drain(self):
@@ -196,10 +205,7 @@ class LeftistHeap:
 
 def merge_all(heaps):
     """把 k 个堆并成一个新堆；每个输入堆都被清空。"""
-    heaps = list(heaps)
-    if not heaps:
-        return LeftistHeap()
-    total = heaps[0]
-    for heap in heaps[1:]:
+    total = LeftistHeap()
+    for heap in heaps:
         total.merge(heap)
     return total
